@@ -16,5 +16,6 @@ async def main():
 
     # твой дальнейший асинхронный код
 
-if name == "main":
+if __name__ == "__main__":
+
     asyncio.run(main())
