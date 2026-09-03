@@ -1,7 +1,7 @@
 import os
 import asyncio
 from openai import OpenAI
-from telegram import Bot
+from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
 
 async def main():
     groq_key = os.getenv("GROQ_API_KEY")
@@ -30,7 +30,7 @@ async def main():
                 "content": (
                     "Ты — креативный автор viral-контента для Telegram-канала. "
                     "Пишешь на русском языке. Обязательно используй эмодзи "
-                    "(🔥 💡 ⚡ 🧠 🌍 ✨ ❗ 🎯 🚀 🎓). "
+                    "(🔥 💡 ⚡ 🧠 🌍 ✨ ❗ 🎯 🚀 🎓 🤯 🌟). "
                     "Каждый пост: цепляющий заголовок (1 строка, крупный) + "
                     "развёрнутый текст (5-8 предложений, с эмодзи). "
                     "Без хештегов в тексте."
@@ -65,36 +65,52 @@ async def main():
             pass
 
     if not title or not body:
-        title = "💡 Удивительный факт дня"
+        title = "🧠 Удивительный факт дня"
         body = (
             "🔥 Человеческий мозг обрабатывает около 70 000 мыслей каждый день.\n\n"
             "⚡ При этом он потребляет всего около 20 ватт энергии — "
             "меньше, чем обычная лампочка накаливания.\n\n"
-            "🧠 Это делает наш разум самым эффективным вычислительным "
+            "🌍 Это делает наш разум самым эффективным вычислительным "
             "устройством на планете, созданным природой.\n\n"
-            "🌍 Интересно, что если бы мозг был компьютером, "
+            "🚀 Интересно, что если бы мозг был компьютером, "
             "он бы занимал площадь в несколько футбольных полей, "
             "но при этом работал на энергии одной батарейки."
         )
 
-    # Красивое оформление поста
+    # Красивое оформление с рамками Unicode box-drawing
     message = (
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"  {title}\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n\n"
+        f"╭━━━━━━━━━━━━━━━━━━━━━━╮\n"
+        f"┃  {title}\n"
+        f"╰━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
         f"{body}\n\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"🎯 Подписывайся на канал\n"
-        f"💬 Делись мыслями в комментариях\n"
-        f"━━━━━━━━━━━━━━━\n\n"
-        f"#факт #мысли #интересно #знания #мир"
+        f"┏━━━━━━━━━━━━━━━━━━━━━━┓\n"
+        f"┃  💬 Как тебе факт?    ┃\n"
+        f"┃  👇 Поставь реакцию!  ┃\n"
+        f"┗━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+        f"✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦\n\n"
+        f"🔖 #факт #мысли #интересно #знания #мир"
     )
+
+    # Кнопки-реакции под постом
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🔥", callback_data="react_fire"),
+            InlineKeyboardButton("🤯", callback_data="react_mindblown"),
+            InlineKeyboardButton("💡", callback_data="react_idea"),
+            InlineKeyboardButton("❤️", callback_data="react_love"),
+            InlineKeyboardButton("👍", callback_data="react_like")
+        ]
+    ])
 
     print(f"Итоговое сообщение:\n{message[:300]}...")
 
     bot = Bot(token=bot_token)
-    await bot.send_message(chat_id=channel, text=message)
-    print("Пост успешно отправлен в Telegram!")
+    await bot.send_message(
+        chat_id=channel,
+        text=message,
+        reply_markup=keyboard
+    )
+    print("Пост с реакциями успешно отправлен в Telegram!")
 
 if __name__ == "__main__":
     asyncio.run(main())
