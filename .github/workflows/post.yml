@@ -7,31 +7,19 @@ on:
   
   # И ручной запуск через кнопку "Run workflow"
   workflow_dispatch:
-
 jobs:
   post:
     runs-on: ubuntu-latest
-    
-    # Переменные окружения доступны во ВСЕХ шагах job'ы
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      # Раскомментируйте, если poster.py использует Telegram:
-      # TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-      # TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CHANNEL_USERNAME: ${{ secrets.CHANNEL_USERNAME }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - run: pip install python-telegram-bot openai
+      - run: python poster.py
 
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install python-telegram-bot openai
 
-      - name: Run poster
-        run: python poster.py
