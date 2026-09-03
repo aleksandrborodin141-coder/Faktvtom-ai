@@ -1,19 +1,39 @@
 name: Auto Post
+
 on:
   schedule:
     - cron: '0 9,15,21 * * *'
   workflow_dispatch:
+
 jobs:
   post:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install python-telegram-bot openai
-      - run: python poster.py
+
+      - name: Install dependencies
+        run: pip install python-telegram-bot openai
+
+      - name: Check secrets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHANNEL_USERNAME: ${{ secrets.CHANNEL_USERNAME }}
+        run: |
+          python -c "import os; print('OPENAI_API_KEY exists:', bool(os.getenv('OPENAI_API_KEY')))"
+          python -c "import os; print('TELEGRAM_BOT_TOKEN exists:', bool(os.getenv('TELEGRAM_BOT_TOKEN')))"
+          python -c "import os; print('CHANNEL_USERNAME exists:', bool(os.getenv('CHANNEL_USERNAME')))"
+
+      - name: Run poster
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHANNEL_USERNAME: ${{ secrets.CHANNEL_USERNAME }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python poster.py
