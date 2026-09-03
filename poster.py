@@ -23,7 +23,7 @@ async def main():
     )
 
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-70b-versatile",
         messages=[
             {"role": "system", "content": "Ты автор Telegram-канала. Пиши короткие, интересные посты на русском языке. Без эмодзи."},
             {"role": "user", "content": "Напиши один интересный факт или мысль для канала. Длина — 2-4 предложения."}
