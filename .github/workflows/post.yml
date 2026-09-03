@@ -1,46 +1,22 @@
-import os
-import asyncio
-from openai import OpenAI
-from telegram import Bot
+name: Post to Telegram
 
-async def main():
-    # Получаем секреты из окружения
-    groq_key = os.getenv("GROQ_API_KEY")
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    channel = os.getenv("CHANNEL_USERNAME")
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
 
-    if not groq_key:
-        raise RuntimeError("GROQ_API_KEY не найден. Проверь секрет в GitHub Actions.")
-    if not bot_token:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN не найден.")
-    if not channel:
-        raise RuntimeError("CHANNEL_USERNAME не найден.")
-
-    print("Все секреты найдены. Подключаюсь к Groq...")
-
-    # Groq работает через тот же SDK, что и OpenAI, но с другим base_url
-    client = OpenAI(
-        api_key=groq_key,
-        base_url="https://api.groq.com/openai/v1"
-    )
-
-    # Генерация поста (бесплатная модель Llama)
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": "Ты автор Telegram-канала. Пиши короткие, интересные посты на русском языке. Без эмодзи."},
-            {"role": "user", "content": "Напиши один интересный факт или мысль для канала. Длина — 2-4 предложения."}
-        ],
-        max_tokens=300,
-        temperature=0.8
-    )
-    text = response.choices[0].message.content.strip()
-    print(f"Сгенерировано: {text[:80]}...")
-
-    # Отправка в Telegram
-    bot = Bot(token=bot_token)
-    await bot.send_message(chat_id=channel, text=text)
-    print("Сообщение успешно отправлено в Telegram!")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      CHANNEL_USERNAME: ${{ secrets.CHANNEL_USERNAME }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install python-telegram-bot openai
+      - run: python poster.py
+      
