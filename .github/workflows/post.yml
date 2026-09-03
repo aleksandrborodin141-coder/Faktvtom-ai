@@ -1,39 +1,37 @@
-name: Auto Post
+name: Post to Telegram
 
 on:
+  # Запуск по расписанию: каждый день в 9:00 UTC (12:00 по МСК)
   schedule:
-    - cron: '0 9,15,21 * * *'
+    - cron: '0 9 * * *'
+  
+  # И ручной запуск через кнопку "Run workflow"
   workflow_dispatch:
 
 jobs:
   post:
     runs-on: ubuntu-latest
+    
+    # Переменные окружения доступны во ВСЕХ шагах job'ы
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      # Раскомментируйте, если poster.py использует Telegram:
+      # TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      # TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install python-telegram-bot openai
-
-      - name: Check secrets
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHANNEL_USERNAME: ${{ secrets.CHANNEL_USERNAME }}
         run: |
-          python -c "import os; print('OPENAI_API_KEY exists:', bool(os.getenv('OPENAI_API_KEY')))"
-          python -c "import os; print('TELEGRAM_BOT_TOKEN exists:', bool(os.getenv('TELEGRAM_BOT_TOKEN')))"
-          python -c "import os; print('CHANNEL_USERNAME exists:', bool(os.getenv('CHANNEL_USERNAME')))"
+          pip install --upgrade pip
+          pip install python-telegram-bot openai
 
       - name: Run poster
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHANNEL_USERNAME: ${{ secrets.CHANNEL_USERNAME }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python poster.py
