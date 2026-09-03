@@ -31,8 +31,16 @@ async def main():
         max_tokens=300,
         temperature=0.8
     )
-    text = response.choices[0].message.content.strip()
+        raw_text = response.choices[0].message.content
+    print(f"Ответ от Groq: {raw_text}")
+    
+    if raw_text:
+        text = raw_text.strip()
+    else:
+        text = "Интересный факт дня: каждый день — это новая возможность узнать что-то новое."
+    
     print(f"Сгенерировано: {text[:80]}...")
+
 
     bot = Bot(token=bot_token)
     await bot.send_message(chat_id=channel, text=text)
