@@ -1,7 +1,6 @@
 import os
 import asyncio
 import json
-import re
 import html
 import urllib.request
 import urllib.parse
@@ -25,38 +24,14 @@ def check_spelling_yandex(text):
     return corrected
 
 
-def smart_parse(text):
-    if not text or not text.strip():
-        return None
-    cleaned = re.sub(r'(?i)\b(заголовок|абзац\s*\d+|вывод)[\s:]*', '', text)
-    cleaned = cleaned.strip()
-    paragraphs = [p.strip() for p in cleaned.split('\n') if p.strip()]
-    if len(paragraphs) < 2:
-        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', cleaned) if s.strip()]
-        paragraphs = sentences
-    print(f"Найдено частей: {len(paragraphs)}")
-    if len(paragraphs) >= 5:
-        return [paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[3], paragraphs[4]]
-    elif len(paragraphs) == 4:
-        return [paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[3]]
-    elif len(paragraphs) == 3:
-        return [paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[2]]
-    elif len(paragraphs) == 2:
-        return [paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[1], paragraphs[1]]
-    elif len(paragraphs) == 1:
-        return [paragraphs[0], paragraphs[0], paragraphs[0], paragraphs[0], paragraphs[0]]
-    return None
-
-
 def get_fallback():
-    """Возвращает список из 5 строк — гарантированно."""
-    return [
-        "Тайны океанских глубин",
-        "Более 80% океана Земли остаётся неизученным.",
-        "Учёные знают о дне Марсианских кратеров больше, чем о дне Тихого океана.",
-        "Каждый год в океане обнаруживают около 2 000 новых видов животных.",
-        "Может, самые невероятные открытия ждут нас прямо под ногами?"
-    ]
+    return {
+        "title": "Тайны океанских глубин",
+        "p1": "Более 80% океана Земли остаётся неизученным.",
+        "p2": "Учёные знают о дне Марсианских кратеров больше, чем о дне Тихого океана.",
+        "p3": "Каждый год в океане обнаруживают около 2 000 новых видов животных.",
+        "conclusion": "Может, самые невероятные открытия ждут нас прямо под ногами?"
+    }
 
 
 async def main():
@@ -72,11 +47,10 @@ async def main():
         raise RuntimeError("CHANNEL_USERNAME не найден.")
 
     print("Все секреты найдены.")
-
     client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
 
-    # === ЭТАП 1: Генерация с retry ===
-    draft = ""
+    # === ЭТАП 1: Генерация JSON ===
+    draft_json = None
     for attempt in range(1, 4):
         try:
             print(f"Попытка генерации {attempt}/3...")
@@ -86,77 +60,83 @@ async def main():
                     {
                         "role": "system",
                         "content": (
-                            "Ты — автор Telegram-канала. Пиши на русском. "
-                            "5 строк текста, каждая с новой строки:\n"
-                            "1. Заголовок\n"
-                            "2. Абзац 1 (2-3 предложения)\n"
-                            "3. Абзац 2 (2-3 предложения)\n"
-                            "4. Абзац 3 (2-3 предложения)\n"
-                            "5. Вывод (1-2 предложения)\n"
-                            "БЕЗ слов 'АБЗАЦ', 'ВЫВОД', 'ЗАГОЛОВОК'."
+                            "Ты — автор Telegram-канала. Пиши на русском языке. "
+                            "Ответь строго в формате JSON с полями: "
+                            "title (заголовок), p1 (абзац 1), p2 (абзац 2), p3 (абзац 3), conclusion (вывод). "
+                            "Каждый абзац — 2-3 предложения. Без эмодзи."
                         )
                     },
                     {
                         "role": "user",
-                        "content": "Напиши интересный факт. Ровно 5 строк."
+                        "content": "Напиши интересный факт для канала. Ответь только JSON."
                     }
                 ],
                 max_tokens=700,
-                temperature=0.8
+                temperature=0.8,
+                response_format={"type": "json_object"}
             )
-            draft = response.choices[0].message.content or ""
-            print(f"Получено {len(draft)} символов")
-            if draft.strip():
-                break
+            raw = response.choices[0].message.content or ""
+            print(f"Получено {len(raw)} символов")
+            if raw.strip():
+                draft_json = json.loads(raw)
+                # Проверяем, что все поля есть
+                required = ["title", "p1", "p2", "p3", "conclusion"]
+                if all(k in draft_json and draft_json[k].strip() for k in required):
+                    break
+                else:
+                    print("JSON неполный, пробую ещё...")
         except Exception as e:
             print(f"Ошибка попытки {attempt}: {e}")
             await asyncio.sleep(3)
 
-    print(f"Черновик:\n{draft}\n")
+    if draft_json:
+        print(f"JSON получен: {json.dumps(draft_json, ensure_ascii=False)[:200]}...")
+    else:
+        print("Groq не справился. Fallback.")
+        draft_json = get_fallback()
 
     # === ЭТАП 2: Редактура ===
-    after_groq = draft
-    if draft.strip():
-        try:
-            proofread = client.chat.completions.create(
-                model="openai/gpt-oss-20b",
-                messages=[
-                    {"role": "system", "content": "Проверь орфографию. Сохрани 5 строк."},
-                    {"role": "user", "content": draft}
-                ],
-                max_tokens=800,
-                temperature=0.2
-            )
-            after_groq = proofread.choices[0].message.content or draft
-        except Exception as e:
-            print(f"Ошибка редактуры: {e}")
+    try:
+        proofread = client.chat.completions.create(
+            model="openai/gpt-oss-20b",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Ты — редактор. Проверь орфографию и пунктуацию. "
+                        "Ответь строго в том же JSON-формате: title, p1, p2, p3, conclusion."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(draft_json, ensure_ascii=False)
+                }
+            ],
+            max_tokens=800,
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
+        after_groq = json.loads(proofread.choices[0].message.content or "{}")
+        # Проверяем полноту
+        required = ["title", "p1", "p2", "p3", "conclusion"]
+        if all(k in after_groq and after_groq[k].strip() for k in required):
+            draft_json = after_groq
+    except Exception as e:
+        print(f"Ошибка редактуры: {e}")
 
-    print(f"После Groq ({len(after_groq)} символов):\n{after_groq}\n")
-
-    # === ЭТАП 3: Спеллер ===
-    after_speller = after_groq
+    # === ЭТАП 3: Яндекс.Спеллер ===
     try:
         print("Запускаю Яндекс.Спеллер...")
-        after_speller = check_spelling_yandex(after_groq)
+        for key in ["title", "p1", "p2", "p3", "conclusion"]:
+            draft_json[key] = check_spelling_yandex(draft_json[key])
     except Exception as e:
         print(f"Ошибка спеллера: {e}")
 
-    print(f"После Спеллера ({len(after_speller)} символов):\n{after_speller}\n")
-
-    # === Разбор ===
-    parsed = smart_parse(after_speller)
-    if parsed:
-        parts = parsed
-        print("Парсер сработал.")
-    else:
-        print("Парсер не справился. Fallback.")
-        parts = get_fallback()
-
-    title = parts[0]
-    p1 = parts[1]
-    p2 = parts[2]
-    p3 = parts[3]
-    conclusion = parts[4]
+    title = draft_json["title"]
+    p1 = draft_json["p1"]
+    p2 = draft_json["p2"]
+    p3 = draft_json["p3"]
+    conclusion = draft_json["conclusion"]
 
     print(f"\nЗаголовок: {title}")
     print(f"Абзац 1: {p1[:50]}...")
