@@ -24,6 +24,25 @@ def check_spelling_yandex(text):
     return corrected
 
 
+def generate_image(prompt, filename="image.jpg"):
+    """Генерация картинки через бесплатный Pollinations.ai."""
+    # Формируем URL для генерации
+    encoded_prompt = urllib.parse.quote(prompt)
+    url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&seed=42"
+    
+    print(f"Генерирую картинку: {prompt[:50]}...")
+    
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("User-Agent", "Mozilla/5.0")
+    
+    with urllib.request.urlopen(req, timeout=45) as response:
+        with open(filename, "wb") as f:
+            f.write(response.read())
+    
+    print(f"Картинка сохранена: {filename}")
+    return filename
+
+
 def get_fallback():
     return {
         "title": "Тайны океанских глубин",
@@ -79,19 +98,14 @@ async def main():
             print(f"Получено {len(raw)} символов")
             if raw.strip():
                 draft_json = json.loads(raw)
-                # Проверяем, что все поля есть
                 required = ["title", "p1", "p2", "p3", "conclusion"]
                 if all(k in draft_json and draft_json[k].strip() for k in required):
                     break
-                else:
-                    print("JSON неполный, пробую ещё...")
         except Exception as e:
             print(f"Ошибка попытки {attempt}: {e}")
             await asyncio.sleep(3)
 
-    if draft_json:
-        print(f"JSON получен: {json.dumps(draft_json, ensure_ascii=False)[:200]}...")
-    else:
+    if not draft_json:
         print("Groq не справился. Fallback.")
         draft_json = get_fallback()
 
@@ -117,7 +131,6 @@ async def main():
             response_format={"type": "json_object"}
         )
         after_groq = json.loads(proofread.choices[0].message.content or "{}")
-        # Проверяем полноту
         required = ["title", "p1", "p2", "p3", "conclusion"]
         if all(k in after_groq and after_groq[k].strip() for k in required):
             draft_json = after_groq
@@ -144,8 +157,17 @@ async def main():
     print(f"Абзац 3: {p3[:50]}...")
     print(f"Вывод: {conclusion}")
 
-    # === Отправка ===
-    message = (
+    # === ЭТАП 4: Генерация картинки ===
+    image_path = None
+    try:
+        # Формируем английский промпт для картинки
+        image_prompt = f"Realistic photo about: {title}. High quality, detailed, cinematic lighting."
+        image_path = generate_image(image_prompt, "post_image.jpg")
+    except Exception as e:
+        print(f"Не удалось сгенерировать картинку: {e}")
+
+    # === Финальное оформление ===
+    caption = (
         f"<b>🔥 {html.escape(title)}</b>\n\n"
         f"─────────────────\n\n"
         f"💡 {html.escape(p1)}\n\n"
@@ -160,8 +182,21 @@ async def main():
     )
 
     bot = Bot(token=bot_token)
-    await bot.send_message(chat_id=channel, text=message, parse_mode="HTML")
-    print("Пост отправлен!")
+
+    if image_path and os.path.exists(image_path):
+        # Отправляем фото + текст
+        with open(image_path, "rb") as photo:
+            await bot.send_photo(
+                chat_id=channel,
+                photo=photo,
+                caption=caption,
+                parse_mode="HTML"
+            )
+        print("Пост с картинкой отправлен!")
+    else:
+        # Отправляем только текст
+        await bot.send_message(chat_id=channel, text=caption, parse_mode="HTML")
+        print("Пост без картинки отправлен!")
 
 if __name__ == "__main__":
     asyncio.run(main())
