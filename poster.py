@@ -10,68 +10,53 @@ from telegram import Bot
 
 
 def check_spelling_yandex(text):
-    """Проверка орфографии через API Яндекс.Спеллера."""
     url = "https://speller.yandex.net/services/spellservice.json/checkText"
     data = urllib.parse.urlencode({"text": text, "lang": "ru"}).encode()
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
-
     with urllib.request.urlopen(req, timeout=10) as response:
         result = json.loads(response.read().decode())
-
     corrected = text
     for error in reversed(result):
         pos = error["pos"]
         length = error["len"]
         suggestion = error["s"][0] if error.get("s") else error["word"]
         corrected = corrected[:pos] + suggestion + corrected[pos + length:]
-
     return corrected
 
 
 def smart_parse(text):
-    """Умный парсер: работает с любым форматом от Groq."""
     if not text or not text.strip():
         return None
-
-    # Убираем служебные метки
     cleaned = re.sub(r'(?i)\b(заголовок|абзац\s*\d+|вывод)[\s:]*', '', text)
     cleaned = cleaned.strip()
-
-    # Разбиваем на абзацы по переносам строк
     paragraphs = [p.strip() for p in cleaned.split('\n') if p.strip()]
-
-    # Если переносов нет — разбиваем по точкам (предложения)
     if len(paragraphs) < 2:
         sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', cleaned) if s.strip()]
         paragraphs = sentences
-
-    print(f"Найдено абзацев/предложений: {len(paragraphs)}")
-
+    print(f"Найдено частей: {len(paragraphs)}")
     if len(paragraphs) >= 5:
-        return paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[3], paragraphs[4]
+        return [paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[3], paragraphs[4]]
     elif len(paragraphs) == 4:
-        return paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[3]
+        return [paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[3]]
     elif len(paragraphs) == 3:
-        return paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[2]
+        return [paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[2], paragraphs[2]]
     elif len(paragraphs) == 2:
-        return paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[1], paragraphs[1]
+        return [paragraphs[0], paragraphs[0], paragraphs[1], paragraphs[1], paragraphs[1]]
     elif len(paragraphs) == 1:
-        return paragraphs[0], paragraphs[0], paragraphs[0], paragraphs[0], paragraphs[0]
-    else:
-        return None
+        return [paragraphs[0], paragraphs[0], paragraphs[0], paragraphs[0], paragraphs[0]]
+    return None
 
 
-def fallback_fact():
-    """Реальный интересный факт на случай, если Groq не ответил."""
-    return (
+def get_fallback():
+    """Возвращает список из 5 строк — гарантированно."""
+    return [
         "Тайны океанских глубин",
         "Более 80% океана Земли остаётся неизученным.",
         "Учёные знают о дне Марсианских кратеров больше, чем о дне Тихого океана.",
         "Каждый год в океане обнаруживают около 2 000 новых видов животных.",
-        "Глубже мы знаем космос, чем собственный океан.",
         "Может, самые невероятные открытия ждут нас прямо под ногами?"
-    )
+    ]
 
 
 async def main():
@@ -86,61 +71,57 @@ async def main():
     if not channel:
         raise RuntimeError("CHANNEL_USERNAME не найден.")
 
-    print("Все секреты найдены. Генерирую пост...")
+    print("Все секреты найдены.")
 
-    client = OpenAI(
-        api_key=groq_key,
-        base_url="https://api.groq.com/openai/v1"
-    )
+    client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
 
-    # === ЭТАП 1: Генерация ===
-    try:
-        response = client.chat.completions.create(
-            model="openai/gpt-oss-20b",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Ты — автор Telegram-канала. Пиши на русском языке. "
-                        "Создай пост из 5 частей, каждая с новой строки:\n"
-                        "1. Короткий заголовок\n"
-                        "2. Первый абзац (2-3 предложения)\n"
-                        "3. Второй абзац (2-3 предложения)\n"
-                        "4. Третий абзац (2-3 предложения)\n"
-                        "5. Короткий вывод (1-2 предложения)\n\n"
-                        "НЕ пиши слова 'АБЗАЦ', 'ВЫВОД', 'ЗАГОЛОВОК'. "
-                        "Только чистый текст."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": "Напиши интересный факт. Раздели на 5 строк."
-                }
-            ],
-            max_tokens=700,
-            temperature=0.8
-        )
-        draft = response.choices[0].message.content or ""
-    except Exception as e:
-        print(f"Ошибка генерации: {e}")
-        draft = ""
-
-    print(f"Черновик ({len(draft)} символов):\n{draft}\n")
-
-    # Если Groq вернул пустоту — используем fallback
-    if not draft.strip():
-        print("Groq вернул пустой ответ. Использую fallback.")
-        title, p1, p2, p3, conclusion = fallback_fact()
-    else:
-        # === ЭТАП 2: Редактура Groq ===
+    # === ЭТАП 1: Генерация с retry ===
+    draft = ""
+    for attempt in range(1, 4):
         try:
-            proofread = client.chat.completions.create(
+            print(f"Попытка генерации {attempt}/3...")
+            response = client.chat.completions.create(
                 model="openai/gpt-oss-20b",
                 messages=[
                     {
                         "role": "system",
-                        "content": "Проверь орфографию. Сохрани 5 строк текста."
+                        "content": (
+                            "Ты — автор Telegram-канала. Пиши на русском. "
+                            "5 строк текста, каждая с новой строки:\n"
+                            "1. Заголовок\n"
+                            "2. Абзац 1 (2-3 предложения)\n"
+                            "3. Абзац 2 (2-3 предложения)\n"
+                            "4. Абзац 3 (2-3 предложения)\n"
+                            "5. Вывод (1-2 предложения)\n"
+                            "БЕЗ слов 'АБЗАЦ', 'ВЫВОД', 'ЗАГОЛОВОК'."
+                        )
                     },
+                    {
+                        "role": "user",
+                        "content": "Напиши интересный факт. Ровно 5 строк."
+                    }
+                ],
+                max_tokens=700,
+                temperature=0.8
+            )
+            draft = response.choices[0].message.content or ""
+            print(f"Получено {len(draft)} символов")
+            if draft.strip():
+                break
+        except Exception as e:
+            print(f"Ошибка попытки {attempt}: {e}")
+            await asyncio.sleep(3)
+
+    print(f"Черновик:\n{draft}\n")
+
+    # === ЭТАП 2: Редактура ===
+    after_groq = draft
+    if draft.strip():
+        try:
+            proofread = client.chat.completions.create(
+                model="openai/gpt-oss-20b",
+                messages=[
+                    {"role": "system", "content": "Проверь орфографию. Сохрани 5 строк."},
                     {"role": "user", "content": draft}
                 ],
                 max_tokens=800,
@@ -149,34 +130,38 @@ async def main():
             after_groq = proofread.choices[0].message.content or draft
         except Exception as e:
             print(f"Ошибка редактуры: {e}")
-            after_groq = draft
 
-        print(f"После Groq ({len(after_groq)} символов):\n{after_groq}\n")
+    print(f"После Groq ({len(after_groq)} символов):\n{after_groq}\n")
 
-        # === ЭТАП 3: Яндекс.Спеллер ===
-        try:
-            print("Запускаю Яндекс.Спеллер...")
-            after_speller = check_spelling_yandex(after_groq)
-        except Exception as e:
-            print(f"Ошибка спеллера: {e}")
-            after_speller = after_groq
+    # === ЭТАП 3: Спеллер ===
+    after_speller = after_groq
+    try:
+        print("Запускаю Яндекс.Спеллер...")
+        after_speller = check_spelling_yandex(after_groq)
+    except Exception as e:
+        print(f"Ошибка спеллера: {e}")
 
-        print(f"После Спеллера ({len(after_speller)} символов):\n{after_speller}\n")
+    print(f"После Спеллера ({len(after_speller)} символов):\n{after_speller}\n")
 
-        # === Разбор ===
-        parsed = smart_parse(after_speller)
+    # === Разбор ===
+    parsed = smart_parse(after_speller)
+    if parsed:
+        parts = parsed
+        print("Парсер сработал.")
+    else:
+        print("Парсер не справился. Fallback.")
+        parts = get_fallback()
 
-        if parsed:
-            title, p1, p2, p3, conclusion = parsed
-        else:
-            print("Парсер не справился. Использую fallback.")
-            title, p1, p2, p3, conclusion = fallback_fact()
+    title = parts[0]
+    p1 = parts[1]
+    p2 = parts[2]
+    p3 = parts[3]
+    conclusion = parts[4]
 
-    print(f"\n=== ФИНАЛЬНЫЙ ПОСТ ===")
-    print(f"Заголовок: {title}")
-    print(f"Абзац 1: {p1[:60]}...")
-    print(f"Абзац 2: {p2[:60]}...")
-    print(f"Абзац 3: {p3[:60]}...")
+    print(f"\nЗаголовок: {title}")
+    print(f"Абзац 1: {p1[:50]}...")
+    print(f"Абзац 2: {p2[:50]}...")
+    print(f"Абзац 3: {p3[:50]}...")
     print(f"Вывод: {conclusion}")
 
     # === Отправка ===
@@ -195,13 +180,8 @@ async def main():
     )
 
     bot = Bot(token=bot_token)
-    await bot.send_message(
-        chat_id=channel,
-        text=message,
-        parse_mode="HTML"
-    )
-    print("\nПост успешно отправлен!")
+    await bot.send_message(chat_id=channel, text=message, parse_mode="HTML")
+    print("Пост отправлен!")
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
