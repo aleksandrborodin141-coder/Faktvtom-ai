@@ -1,7 +1,7 @@
 import os
 import asyncio
 from openai import OpenAI
-from telegram import Bot, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Bot
 
 async def main():
     groq_key = os.getenv("GROQ_API_KEY")
@@ -29,78 +29,70 @@ async def main():
                 "role": "system",
                 "content": (
                     "Ты — креативный автор viral-контента для Telegram-канала. "
-                    "Пишешь на русском языке. Обязательно используй эмодзи "
-                    "(🔥 💡 ⚡ 🧠 🌍 ✨ ❗ 🎯 🚀 🎓 🤯 🌟). "
-                    "Каждый пост: цепляющий заголовок (1 строка, крупный) + "
-                    "развёрнутый текст (5-8 предложений, с эмодзи). "
-                    "Без хештегов в тексте."
+                    "Пишешь на русском языке. "
+                    "Каждый пост: цепляющий заголовок (1 строка) + "
+                    "3 коротких абзаца по 2-3 предложения + "
+                    "итоговая мысль (1-2 предложения). "
+                    "Без хештегов, без эмодзи — я добавлю их сам."
                 )
             },
             {
                 "role": "user",
                 "content": (
                     "Напиши пост в строгом формате:\n\n"
-                    "ЗАГОЛОВОК: <эмодзи + короткий яркий заголовок>\n"
-                    "ТЕКСТ: <развёрнутый текст с эмодзи>\n\n"
-                    "Тема: один интересный факт, открытие или мысль, "
-                    "которую захочется перечитать."
+                    "ЗАГОЛОВОК: <короткий яркий заголовок>\n"
+                    "АБЗАЦ1: <первый абзац>\n"
+                    "АБЗАЦ2: <второй абзац>\n"
+                    "АБЗАЦ3: <третий абзац>\n"
+                    "ВЫВОД: <итоговая мысль>\n\n"
+                    "Тема: один интересный факт или наблюдение."
                 )
             }
         ],
         max_tokens=700,
-        temperature=0.9
+        temperature=0.8
     )
 
     raw_text = response.choices[0].message.content or ""
     print(f"Ответ от Groq:\n{raw_text}\n")
 
     title = ""
-    body = ""
+    p1 = ""
+    p2 = ""
+    p3 = ""
+    conclusion = ""
 
-    if "ЗАГОЛОВОК:" in raw_text and "ТЕКСТ:" in raw_text:
+    if "ЗАГОЛОВОК:" in raw_text:
         try:
-            title = raw_text.split("ЗАГОЛОВОК:")[1].split("ТЕКСТ:")[0].strip()
-            body = raw_text.split("ТЕКСТ:")[1].strip()
+            title = raw_text.split("ЗАГОЛОВОК:")[1].split("АБЗАЦ1:")[0].strip()
+            p1 = raw_text.split("АБЗАЦ1:")[1].split("АБЗАЦ2:")[0].strip()
+            p2 = raw_text.split("АБЗАЦ2:")[1].split("АБЗАЦ3:")[0].strip()
+            p3 = raw_text.split("АБЗАЦ3:")[1].split("ВЫВОД:")[0].strip()
+            conclusion = raw_text.split("ВЫВОД:")[1].strip()
         except Exception:
             pass
 
-    if not title or not body:
-        title = "🧠 Удивительный факт дня"
-        body = (
-            "🔥 Человеческий мозг обрабатывает около 70 000 мыслей каждый день.\n\n"
-            "⚡ При этом он потребляет всего около 20 ватт энергии — "
-            "меньше, чем обычная лампочка накаливания.\n\n"
-            "🌍 Это делает наш разум самым эффективным вычислительным "
-            "устройством на планете, созданным природой.\n\n"
-            "🚀 Интересно, что если бы мозг был компьютером, "
-            "он бы занимал площадь в несколько футбольных полей, "
-            "но при этом работал на энергии одной батарейки."
-        )
+    if not title:
+        title = "Удивительный факт дня"
+        p1 = "Человеческий мозг обрабатывает около 70 000 мыслей каждый день."
+        p2 = "При этом он потребляет всего около 20 ватт энергии."
+        p3 = "Это делает наш разум самым эффективным вычислительным устройством на планете."
+        conclusion = "Иногда самые мощные вещи скрываются в самых простых формах."
 
-    # Красивое оформление с рамками Unicode box-drawing
+    # HTML-форматирование
     message = (
-        f"╭━━━━━━━━━━━━━━━━━━━━━━╮\n"
-        f"┃  {title}\n"
-        f"╰━━━━━━━━━━━━━━━━━━━━━━╯\n\n"
-        f"{body}\n\n"
-        f"┏━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        f"┃  💬 Как тебе факт?    ┃\n"
-        f"┃  👇 Поставь реакцию!  ┃\n"
-        f"┗━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-        f"✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦ ✦\n\n"
-        f"🔖 #факт #мысли #интересно #знания #мир"
+        f"<b>🔥 {title}</b>\n\n"
+        f"─────────────────\n\n"
+        f"💡 {p1}\n\n"
+        f"⚡ {p2}\n\n"
+        f"🧠 {p3}\n\n"
+        f"─────────────────\n\n"
+        f"<i>💭 {conclusion}</i>\n\n"
+        f"👇 <b>Твоя реакция?</b>\n"
+        f"Нажми дважды на пост и выбери эмодзи: 🔥 🤯 💡 ❤️ 👍\n\n"
+        f"💬 <b>Обсудим в комментариях?</b> Жми кнопку ниже ↓\n\n"
+        f"#факт #мысли #интересно #знания #мир"
     )
-
-    # Кнопки-реакции под постом
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🔥", callback_data="react_fire"),
-            InlineKeyboardButton("🤯", callback_data="react_mindblown"),
-            InlineKeyboardButton("💡", callback_data="react_idea"),
-            InlineKeyboardButton("❤️", callback_data="react_love"),
-            InlineKeyboardButton("👍", callback_data="react_like")
-        ]
-    ])
 
     print(f"Итоговое сообщение:\n{message[:300]}...")
 
@@ -108,9 +100,9 @@ async def main():
     await bot.send_message(
         chat_id=channel,
         text=message,
-        reply_markup=keyboard
+        parse_mode="HTML"
     )
-    print("Пост с реакциями успешно отправлен в Telegram!")
+    print("Пост успешно отправлен!")
 
 if __name__ == "__main__":
     asyncio.run(main())
