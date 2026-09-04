@@ -2,9 +2,9 @@ name: Post to Telegram
 
 on:
   schedule:
-    - cron: '30 5 * * *'   # 8:30 МСК — утренний пост
-    - cron: '0 10 * * *'   # 13:00 МСК — обеденный пост
-    - cron: '30 15 * * *'  # 18:30 МСК — вечерний пост
+    - cron: '30 5 * * *'
+    - cron: '0 10 * * *'
+    - cron: '30 15 * * *'
   workflow_dispatch:
 
 jobs:
@@ -19,6 +19,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install python-telegram-bot openai
+      - run: pip install python-telegram-bot openai yandex-speller
       - run: python poster.py
-      
