@@ -25,17 +25,16 @@ def check_spelling_yandex(text):
 
 
 def generate_image(prompt, filename="image.jpg"):
-    """Генерация картинки через бесплатный Pollinations.ai."""
-    # Формируем URL для генерации
+    """Генерация картинки через Pollinations.ai."""
     encoded_prompt = urllib.parse.quote(prompt)
     url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&seed=42"
     
-    print(f"Генерирую картинку: {prompt[:50]}...")
+    print(f"Генерирую картинку: {prompt[:60]}...")
     
     req = urllib.request.Request(url, method="GET")
     req.add_header("User-Agent", "Mozilla/5.0")
     
-    with urllib.request.urlopen(req, timeout=45) as response:
+    with urllib.request.urlopen(req, timeout=60) as response:
         with open(filename, "wb") as f:
             f.write(response.read())
     
@@ -49,7 +48,8 @@ def get_fallback():
         "p1": "Более 80% океана Земли остаётся неизученным.",
         "p2": "Учёные знают о дне Марсианских кратеров больше, чем о дне Тихого океана.",
         "p3": "Каждый год в океане обнаруживают около 2 000 новых видов животных.",
-        "conclusion": "Может, самые невероятные открытия ждут нас прямо под ногами?"
+        "conclusion": "Может, самые невероятные открытия ждут нас прямо под ногами?",
+        "image_prompt": "deep ocean underwater mysterious creatures blue water realistic photo"
     }
 
 
@@ -68,7 +68,7 @@ async def main():
     print("Все секреты найдены.")
     client = OpenAI(api_key=groq_key, base_url="https://api.groq.com/openai/v1")
 
-    # === ЭТАП 1: Генерация JSON ===
+    # === ЭТАП 1: Генерация JSON с английским промптом для картинки ===
     draft_json = None
     for attempt in range(1, 4):
         try:
@@ -81,16 +81,19 @@ async def main():
                         "content": (
                             "Ты — автор Telegram-канала. Пиши на русском языке. "
                             "Ответь строго в формате JSON с полями: "
-                            "title (заголовок), p1 (абзац 1), p2 (абзац 2), p3 (абзац 3), conclusion (вывод). "
-                            "Каждый абзац — 2-3 предложения. Без эмодзи."
+                            "title (заголовок на русском), "
+                            "p1 (абзац 1), p2 (абзац 2), p3 (абзац 3), "
+                            "conclusion (вывод), "
+                            "image_prompt (короткое описание картинки на АНГЛИЙСКОМ, 5-7 слов, для генерации фото). "
+                            "Абзацы — 2-3 предложения. Без эмодзи."
                         )
                     },
                     {
                         "role": "user",
-                        "content": "Напиши интересный факт для канала. Ответь только JSON."
+                        "content": "Напиши интересный факт. Ответь только JSON."
                     }
                 ],
-                max_tokens=700,
+                max_tokens=800,
                 temperature=0.8,
                 response_format={"type": "json_object"}
             )
@@ -98,9 +101,11 @@ async def main():
             print(f"Получено {len(raw)} символов")
             if raw.strip():
                 draft_json = json.loads(raw)
-                required = ["title", "p1", "p2", "p3", "conclusion"]
+                required = ["title", "p1", "p2", "p3", "conclusion", "image_prompt"]
                 if all(k in draft_json and draft_json[k].strip() for k in required):
                     break
+                else:
+                    print(f"JSON неполный. Поля: {list(draft_json.keys())}")
         except Exception as e:
             print(f"Ошибка попытки {attempt}: {e}")
             await asyncio.sleep(3)
@@ -117,8 +122,8 @@ async def main():
                 {
                     "role": "system",
                     "content": (
-                        "Ты — редактор. Проверь орфографию и пунктуацию. "
-                        "Ответь строго в том же JSON-формате: title, p1, p2, p3, conclusion."
+                        "Ты — редактор. Проверь орфографию. "
+                        "Ответь в JSON: title, p1, p2, p3, conclusion, image_prompt."
                     )
                 },
                 {
@@ -126,12 +131,12 @@ async def main():
                     "content": json.dumps(draft_json, ensure_ascii=False)
                 }
             ],
-            max_tokens=800,
+            max_tokens=900,
             temperature=0.2,
             response_format={"type": "json_object"}
         )
         after_groq = json.loads(proofread.choices[0].message.content or "{}")
-        required = ["title", "p1", "p2", "p3", "conclusion"]
+        required = ["title", "p1", "p2", "p3", "conclusion", "image_prompt"]
         if all(k in after_groq and after_groq[k].strip() for k in required):
             draft_json = after_groq
     except Exception as e:
@@ -150,23 +155,20 @@ async def main():
     p2 = draft_json["p2"]
     p3 = draft_json["p3"]
     conclusion = draft_json["conclusion"]
+    image_prompt = draft_json["image_prompt"]
 
     print(f"\nЗаголовок: {title}")
-    print(f"Абзац 1: {p1[:50]}...")
-    print(f"Абзац 2: {p2[:50]}...")
-    print(f"Абзац 3: {p3[:50]}...")
-    print(f"Вывод: {conclusion}")
+    print(f"Промпт для картинки: {image_prompt}")
 
     # === ЭТАП 4: Генерация картинки ===
     image_path = None
     try:
-        # Формируем английский промпт для картинки
-        image_prompt = f"Realistic photo about: {title}. High quality, detailed, cinematic lighting."
-        image_path = generate_image(image_prompt, "post_image.jpg")
+        full_prompt = f"{image_prompt}, realistic photo, high quality, detailed, cinematic lighting"
+        image_path = generate_image(full_prompt, "post_image.jpg")
     except Exception as e:
         print(f"Не удалось сгенерировать картинку: {e}")
 
-    # === Финальное оформление ===
+    # === Отправка ===
     caption = (
         f"<b>🔥 {html.escape(title)}</b>\n\n"
         f"─────────────────\n\n"
@@ -184,7 +186,6 @@ async def main():
     bot = Bot(token=bot_token)
 
     if image_path and os.path.exists(image_path):
-        # Отправляем фото + текст
         with open(image_path, "rb") as photo:
             await bot.send_photo(
                 chat_id=channel,
@@ -194,7 +195,6 @@ async def main():
             )
         print("Пост с картинкой отправлен!")
     else:
-        # Отправляем только текст
         await bot.send_message(chat_id=channel, text=caption, parse_mode="HTML")
         print("Пост без картинки отправлен!")
 
