@@ -2,6 +2,7 @@ import os
 import asyncio
 from openai import OpenAI
 from telegram import Bot
+from yandex_speller import Speller
 
 async def main():
     groq_key = os.getenv("GROQ_API_KEY")
@@ -22,6 +23,7 @@ async def main():
         base_url="https://api.groq.com/openai/v1"
     )
 
+    # === ЭТАП 1: Генерация поста ===
     response = client.chat.completions.create(
         model="openai/gpt-oss-20b",
         messages=[
@@ -53,22 +55,56 @@ async def main():
         temperature=0.8
     )
 
-    raw_text = response.choices[0].message.content or ""
-    print(f"Ответ от Groq:\n{raw_text}\n")
+    draft = response.choices[0].message.content or ""
+    print(f"Черновик:\n{draft}\n")
 
+    # === ЭТАП 2: Проверка через Groq-редактор ===
+    proofread = client.chat.completions.create(
+        model="openai/gpt-oss-20b",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Ты — профессиональный редактор русского языка. "
+                    "Твоя задача: проверить текст на орфографические, "
+                    "пунктуационные и стилистические ошибки. "
+                    "Исправь всё, что найдёшь. Сохрани исходный формат "
+                    "(ЗАГОЛОВОК, АБЗАЦ1, АБЗАЦ2, АБЗАЦ3, ВЫВОД). "
+                    "Не добавляй эмодзи и хештеги."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Проверь и исправь этот текст:\n\n{draft}"
+            }
+        ],
+        max_tokens=800,
+        temperature=0.2
+    )
+
+    after_groq = proofread.choices[0].message.content or draft
+    print(f"После Groq:\n{after_groq}\n")
+
+    # === ЭТАП 3: Проверка через Яндекс.Спеллер ===
+    print("Запускаю Яндекс.Спеллер...")
+    speller = Speller(lang='ru')
+    after_speller = speller.spelled(after_groq)
+    print(f"После Спеллера:\n{after_speller}\n")
+
+    # === Разбор текста ===
     title = ""
     p1 = ""
     p2 = ""
     p3 = ""
     conclusion = ""
 
-    if "ЗАГОЛОВОК:" in raw_text:
+    if "ЗАГОЛОВОК:" in after_speller:
         try:
-            title = raw_text.split("ЗАГОЛОВОК:")[1].split("АБЗАЦ1:")[0].strip()
-            p1 = raw_text.split("АБЗАЦ1:")[1].split("АБЗАЦ2:")[0].strip()
-            p2 = raw_text.split("АБЗАЦ2:")[1].split("АБЗАЦ3:")[0].strip()
-            p3 = raw_text.split("АБЗАЦ3:")[1].split("ВЫВОД:")[0].strip()
-            conclusion = raw_text.split("ВЫВОД:")[1].strip()
+            title = after_speller.split("ЗАГОЛОВОК:")[1].split("АБЗАЦ1:")[0].strip()
+            p1 = after_speller.split("АБЗАЦ1:")[1].split("АБЗАЦ2:")[0].strip()
+            p2 = after_speller.split("АБЗАЦ2:")[1].split("АБЗАЦ3:")[0].strip()
+            p3 = after_speller.split("АБЗАЦ3:")[1].split("ВЫВОД:")[0].strip()
+            conclusion = after_speller.split("ВЫВОД:")[1].strip()
         except Exception:
             pass
 
@@ -79,7 +115,7 @@ async def main():
         p3 = "Это делает наш разум самым эффективным вычислительным устройством на планете."
         conclusion = "Иногда самые мощные вещи скрываются в самых простых формах."
 
-    # HTML-форматирование
+    # === Финальное оформление ===
     message = (
         f"<b>🔥 {title}</b>\n\n"
         f"─────────────────\n\n"
