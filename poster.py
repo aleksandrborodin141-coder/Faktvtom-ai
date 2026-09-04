@@ -1,8 +1,32 @@
 import os
 import asyncio
+import json
+import urllib.request
+import urllib.parse
 from openai import OpenAI
 from telegram import Bot
-from yandex_speller import Speller
+
+
+def check_spelling_yandex(text):
+    """Проверка орфографии через API Яндекс.Спеллера (без сторонних библиотек)."""
+    url = "https://speller.yandex.net/services/spellservice.json/checkText"
+    data = urllib.parse.urlencode({"text": text, "lang": "ru"}).encode()
+    req = urllib.request.Request(url, data=data, method="POST")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+
+    with urllib.request.urlopen(req, timeout=10) as response:
+        result = json.loads(response.read().decode())
+
+    # Применяем исправления (с конца, чтобы не сбить позиции)
+    corrected = text
+    for error in reversed(result):
+        pos = error["pos"]
+        length = error["len"]
+        suggestion = error["s"][0] if error.get("s") else error["word"]
+        corrected = corrected[:pos] + suggestion + corrected[pos + length:]
+
+    return corrected
+
 
 async def main():
     groq_key = os.getenv("GROQ_API_KEY")
@@ -87,8 +111,7 @@ async def main():
 
     # === ЭТАП 3: Проверка через Яндекс.Спеллер ===
     print("Запускаю Яндекс.Спеллер...")
-    speller = Speller(lang='ru')
-    after_speller = speller.spelled(after_groq)
+    after_speller = check_spelling_yandex(after_groq)
     print(f"После Спеллера:\n{after_speller}\n")
 
     # === Разбор текста ===
